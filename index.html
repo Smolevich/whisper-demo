@@ -634,6 +634,47 @@
             }
         });
 
+        // Обновление списка моделей в зависимости от типа (multilingual/english)
+        function updateModelList() {
+            if (!modelTypeSelect) return;
+            
+            const modelType = modelTypeSelect.value;
+            const currentValue = modelSelect.value;
+            
+            // Очищаем список
+            modelSelect.innerHTML = '';
+            
+            if (modelType === 'multilingual') {
+                modelSelect.innerHTML = `
+                    <option value="Xenova/whisper-tiny">Tiny (быстрая, низкое качество)</option>
+                    <option value="Xenova/whisper-base">Base (базовая, среднее качество)</option>
+                    <option value="Xenova/whisper-small">Small (стандартная, хорошее качество)</option>
+                    <option value="Xenova/whisper-medium">Medium (качественная, отличное качество)</option>
+                `;
+            } else {
+                modelSelect.innerHTML = `
+                    <option value="Xenova/whisper-tiny.en">Tiny.en (быстрая, только английский)</option>
+                    <option value="Xenova/whisper-base.en">Base.en (базовая, только английский)</option>
+                    <option value="Xenova/whisper-small.en">Small.en (стандартная, только английский)</option>
+                `;
+            }
+            
+            // Восстанавливаем выбранное значение если оно доступно
+            if (Array.from(modelSelect.options).some(opt => opt.value === currentValue)) {
+                modelSelect.value = currentValue;
+            } else {
+                // Иначе выбираем первую опцию
+                modelSelect.selectedIndex = 0;
+            }
+        }
+        
+        // Обновляем список моделей при изменении типа
+        if (modelTypeSelect) {
+            modelTypeSelect.addEventListener('change', updateModelList);
+            // Инициализируем список при загрузке
+            updateModelList();
+        }
+        
         // Pre-warming модели при выборе (отключено из-за ошибок, модель загрузится при транскрипции)
         // modelSelect.addEventListener('change', async () => {
         //     const modelName = modelSelect.value;
