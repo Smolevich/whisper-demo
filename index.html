@@ -609,8 +609,103 @@
             await transcribe();
         });
 
+        // Функция обработки результата транскрипции (используется и в Worker и в обычном режиме)
+        function handleTranscriptionResult(output) {
+            progressBar.style.width = '100%';
+            
+            const modelName = modelSelect.value;
+            const text = output.text || (output.chunks ? output.chunks.map(c => c.text).join(' ') : 'Текст не найден');
+            
+            // Проверка качества результата
+            if (text && text.length > 0) {
+                const wordCount = text.split(/\s+/).length;
+                const charCount = text.length;
+                
+                // Если результат очень короткий для длинного файла - возможно плохое качество
+                if (modelName === 'Xenova/whisper-base' && charCount < 100 && audioData.size > 5 * 1024 * 1024) {
+                    showStatus('Транскрипция завершена, но качество может быть низким. Рекомендуется использовать Small или Medium модель для лучших результатов.', 'info');
+                } else {
+                    showStatus(`Транскрипция завершена! Обработано ${wordCount} слов.`, 'success');
+                }
+            } else {
+                showStatus('Транскрипция завершена, но текст не найден. Попробуйте другую модель или проверьте аудио файл.', 'error');
+            }
+            
+            resultText.textContent = text;
+            result.classList.add('active');
+            
+            // Генерация и скачивание файлов в выбранных форматах
+            const selectedFormats = Array.from(formatsContainer.querySelectorAll('input[type="checkbox"]:checked'))
+                .map(cb => cb.value);
+            
+            downloadButtons.innerHTML = '';
+            downloadButtons.style.display = selectedFormats.length > 0 ? 'flex' : 'none';
+            
+            const fileName = audioData.name.replace(/\.[^/.]+$/, '');
+            const chunks = output.chunks || [];
+            const language = languageSelect.value === 'auto' ? null : languageSelect.value;
+            
+            selectedFormats.forEach(format => {
+                let content = '';
+                let filename = '';
+                let mimeType = '';
+                
+                switch(format) {
+                    case 'txt':
+                        content = text;
+                        filename = `${fileName}.txt`;
+                        mimeType = 'text/plain';
+                        break;
+                    case 'json':
+                        content = JSON.stringify({
+                            text: text,
+                            chunks: chunks,
+                            language: language || 'auto',
+                            model: modelName
+                        }, null, 2);
+                        filename = `${fileName}.json`;
+                        mimeType = 'application/json';
+                        break;
+                    case 'srt':
+                        content = generateSRT(chunks);
+                        filename = `${fileName}.srt`;
+                        mimeType = 'text/srt';
+                        break;
+                    case 'vtt':
+                        content = generateVTT(chunks);
+                        filename = `${fileName}.vtt`;
+                        mimeType = 'text/vtt';
+                        break;
+                    case 'tsv':
+                        content = generateTSV(chunks);
+                        filename = `${fileName}.tsv`;
+                        mimeType = 'text/tab-separated-values';
+                        break;
+                }
+                
+                if (content) {
+                    const btn = document.createElement('button');
+                    btn.className = 'download-btn';
+                    btn.textContent = `Скачать ${format.toUpperCase()}`;
+                    btn.onclick = () => downloadFile(content, filename, mimeType);
+                    downloadButtons.appendChild(btn);
+                }
+            });
+            
+            isProcessing = false;
+            transcribeBtn.disabled = false;
+            stopBtn.disabled = true;
+            progress.classList.remove('active');
+        }
+        
         stopBtn.addEventListener('click', () => {
             isProcessing = false;
+            
+            // Останавливаем Worker если используется
+            if (worker) {
+                worker.postMessage({ type: 'stop' });
+            }
+            
             // Останавливаем все интервалы и таймауты
             if (progressInterval) {
                 clearInterval(progressInterval);
@@ -693,6 +788,86 @@
                 return;
             }
 
+            // Пробуем использовать Web Worker для предотвращения белого экрана
+            const useWorker = initWorker();
+            
+            if (useWorker) {
+                // Используем Web Worker режим
+                await transcribeWithWorker();
+                return;
+            }
+            
+            // Fallback на обычный режим если Worker недоступен
+            await transcribeDirect();
+        }
+        
+        async function transcribeWithWorker() {
+            isProcessing = true;
+            transcribeBtn.disabled = true;
+            stopBtn.disabled = false;
+            result.classList.remove('active');
+            progress.classList.add('active');
+            progressBar.style.width = '10%';
+            
+            try {
+                const modelName = modelSelect.value;
+                let language = null;
+                if (languageSelect.value !== 'auto') {
+                    language = languageSelect.value; // 'ru' или 'en'
+                }
+                
+                // Загружаем модель в Worker
+                worker.postMessage({ 
+                    type: 'load', 
+                    data: { modelName } 
+                });
+                
+                // Ждем загрузки модели
+                await new Promise((resolve) => {
+                    const listener = (e) => {
+                        if (e.data.type === 'modelLoaded') {
+                            worker.removeEventListener('message', listener);
+                            resolve();
+                        }
+                    };
+                    worker.addEventListener('message', listener);
+                });
+                
+                // Создаем URL для аудио
+                const audioUrl = URL.createObjectURL(audioData);
+                
+                // Конфигурация
+                const config = modelConfigs[modelName] || modelConfigs['Xenova/whisper-base'];
+                
+                const transcriptionOptions = {
+                    ...config,
+                    return_timestamps: true,
+                };
+                
+                if (language) {
+                    transcriptionOptions.language = language;
+                    transcriptionOptions.task = 'transcribe'; // ВАЖНО: гарантирует транскрипцию на выбранном языке
+                }
+                
+                // Запускаем транскрипцию в Worker
+                worker.postMessage({ 
+                    type: 'transcribe', 
+                    data: { audioUrl, options: transcriptionOptions } 
+                });
+                
+                // URL будет освобожден после получения результата в handleTranscriptionResult
+                
+            } catch (error) {
+                console.error('Ошибка транскрипции через Worker:', error);
+                showStatus(`Ошибка: ${error.message}`, 'error');
+                isProcessing = false;
+                transcribeBtn.disabled = false;
+                stopBtn.disabled = true;
+                progress.classList.remove('active');
+            }
+        }
+        
+        async function transcribeDirect() {
             // Очистка предыдущих таймаутов и интервалов
             if (transcriptionTimeout) {
                 clearTimeout(transcriptionTimeout);
