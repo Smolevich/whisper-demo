@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; connect-src 'self' https://huggingface.co https://cdn-lfs.huggingface.co https://*.hf.space; worker-src 'self' blob:; style-src 'self' 'unsafe-inline';">
     <title>Whisper в браузере</title>
     <style>
         * {
@@ -305,6 +306,10 @@
     </div>
 
     <script type="module">
+        // Transformers.js - официальная библиотека от Hugging Face
+        // Репозиторий: https://github.com/xenova/transformers.js
+        // Проверка безопасности: https://github.com/xenova/transformers.js/security
+        // Модели Xenova на HF: https://huggingface.co/Xenova
         import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1';
 
         // Используем кэш для моделей
@@ -314,6 +319,43 @@
         let transcriber = null;
         let audioData = null;
         let isProcessing = false;
+        let currentModel = null;
+
+        // Белый список доверенных моделей
+        const trustedModels = [
+            'Xenova/whisper-tiny',
+            'Xenova/whisper-base',
+            'Xenova/whisper-small',
+            'Xenova/whisper-medium'
+        ];
+
+        // Конфигурация параметров для разных моделей
+        const modelConfigs = {
+            'Xenova/whisper-tiny': {
+                chunk_length_s: 30,
+                stride_length_s: 5
+            },
+            'Xenova/whisper-base': {
+                chunk_length_s: 30,
+                stride_length_s: 5
+            },
+            'Xenova/whisper-small': {
+                chunk_length_s: 30,
+                stride_length_s: 3
+            },
+            'Xenova/whisper-medium': {
+                chunk_length_s: 20,
+                stride_length_s: 2
+            }
+        };
+
+        // Валидация модели
+        function validateModel(modelName) {
+            if (!trustedModels.includes(modelName)) {
+                throw new Error('Недоверенная модель');
+            }
+            return true;
+        }
 
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
@@ -349,6 +391,29 @@
         fileInput.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
                 handleFile(e.target.files[0]);
+            }
+        });
+
+        // Pre-warming модели при выборе
+        modelSelect.addEventListener('change', async () => {
+            const modelName = modelSelect.value;
+            if (currentModel !== modelName && !isProcessing) {
+                try {
+                    validateModel(modelName);
+                    showStatus('Предзагрузка модели...', 'info');
+                    transcriber = await pipeline('automatic-speech-recognition', modelName);
+                    currentModel = modelName;
+                    showStatus('Модель готова к использованию', 'success');
+                    setTimeout(() => {
+                        if (status.textContent.includes('Модель готова')) {
+                            status.classList.remove('success');
+                            status.style.display = 'none';
+                        }
+                    }, 2000);
+                } catch (error) {
+                    console.error('Ошибка предзагрузки модели:', error);
+                    showStatus('Ошибка загрузки модели', 'error');
+                }
             }
         });
 
@@ -396,20 +461,27 @@
                 const modelName = modelSelect.value;
                 const language = languageSelect.value === 'auto' ? null : languageSelect.value;
 
-                showStatus(`Загрузка модели ${modelName}...`, 'info');
-                progressBar.style.width = '20%';
+                // Валидация модели
+                validateModel(modelName);
 
-                // Инициализация транскрибера
-                // Пересоздаём pipeline при смене модели
-                transcriber = await pipeline('automatic-speech-recognition', modelName, {
-                    progress_callback: (progress) => {
-                        if (progress.status === 'progress') {
-                            const percent = Math.round(progress.progress * 100);
-                            progressBar.style.width = `${20 + percent * 0.2}%`;
-                            showStatus(`Загрузка модели: ${percent}%`, 'info');
+                // Создаём pipeline только при смене модели
+                if (!transcriber || currentModel !== modelName) {
+                    showStatus(`Загрузка модели ${modelName}...`, 'info');
+                    progressBar.style.width = '20%';
+
+                    transcriber = await pipeline('automatic-speech-recognition', modelName, {
+                        progress_callback: (progress) => {
+                            if (progress.status === 'progress') {
+                                const percent = Math.round(progress.progress * 100);
+                                progressBar.style.width = `${20 + percent * 0.2}%`;
+                                showStatus(`Загрузка модели: ${percent}%`, 'info');
+                            }
                         }
-                    }
-                });
+                    });
+                    currentModel = modelName;
+                } else {
+                    showStatus('Используется кэшированная модель', 'info');
+                }
 
                 progressBar.style.width = '40%';
                 showStatus('Обработка аудио...', 'info');
@@ -420,10 +492,12 @@
 
                 showStatus('Транскрипция...', 'info');
 
+                // Получаем конфигурацию для текущей модели
+                const config = modelConfigs[modelName] || modelConfigs['Xenova/whisper-base'];
+
                 // Транскрипция - Transformers.js принимает URL напрямую
                 const output = await transcriber(audioUrl, {
-                    chunk_length_s: 30,
-                    stride_length_s: 5,
+                    ...config,
                     return_timestamps: true,
                     language: language,
                 });
