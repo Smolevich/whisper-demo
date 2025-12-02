@@ -965,16 +965,8 @@
                 return;
             }
 
-            // Пробуем использовать Web Worker для предотвращения белого экрана
-            const useWorker = initWorker();
-            
-            if (useWorker) {
-                // Используем Web Worker режим
-                await transcribeWithWorker();
-                return;
-            }
-            
-            // Fallback на обычный режим если Worker недоступен
+            // ВРЕМЕННО: отключаем режим Web Worker из-за ограничений AudioContext в воркере
+            // и используем только прямой режим, который стабильно работает в браузере.
             await transcribeDirect();
         }
         
