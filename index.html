@@ -954,15 +954,21 @@
 
             try {
                 const modelName = modelSelect.value;
-                // Преобразуем язык в правильный формат для Whisper
+                const task = taskSelect.value; // 'transcribe' или 'translate'
                 let language = null;
+                
                 if (languageSelect.value !== 'auto') {
-                    // Маппинг языков для Whisper (нужен код языка, не название)
-                    const languageMap = {
-                        'ru': 'ru',  // Русский
-                        'en': 'en'   // English
-                    };
-                    language = languageMap[languageSelect.value] || languageSelect.value;
+                    language = languageSelect.value;
+                }
+                
+                // Для english-only моделей язык должен быть null или 'en'
+                if (modelName.includes('.en') && language && language !== 'en') {
+                    showStatus('English-only модели поддерживают только английский язык', 'error');
+                    isProcessing = false;
+                    transcribeBtn.disabled = false;
+                    stopBtn.disabled = true;
+                    progress.classList.remove('active');
+                    return;
                 }
 
                 // Валидация модели
@@ -1022,10 +1028,11 @@
                 const audioUrl = URL.createObjectURL(audioData);
                 progressBar.style.width = '50%';
 
-                showStatus('Транскрипция...', 'info');
+                const taskName = task === 'translate' ? 'Перевод' : 'Транскрипция';
+                showStatus(`${taskName}...`, 'info');
 
                 // Получаем конфигурацию для текущей модели
-                const config = modelConfigs[modelName] || modelConfigs['Xenova/whisper-base'];
+                const config = modelConfigs[modelName] || modelConfigs['Xenova/whisper-base'] || modelConfigs['Xenova/whisper-base.en'];
 
                 // Симуляция прогресса во время транскрипции
                 // callback_function может не поддерживаться для ASR pipeline в Transformers.js
