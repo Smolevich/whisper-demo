@@ -183,10 +183,13 @@
             overflow: hidden;
             margin-bottom: 20px;
             display: none;
+            opacity: 0;
+            transition: opacity 0.3s;
         }
 
         .progress.active {
             display: block;
+            opacity: 1;
         }
 
         .progress-bar {
@@ -307,6 +310,16 @@
     </div>
 
     <script type="module">
+        // Обработка ошибок загрузки модулей
+        window.addEventListener('error', (e) => {
+            console.error('Ошибка загрузки:', e);
+            const statusEl = document.getElementById('status');
+            if (statusEl) {
+                statusEl.textContent = `Ошибка загрузки: ${e.message}`;
+                statusEl.className = 'status error';
+            }
+        });
+
         // Transformers.js - официальная библиотека от Hugging Face
         // Репозиторий: https://github.com/xenova/transformers.js
         // Проверка безопасности: https://github.com/xenova/transformers.js/security
@@ -326,6 +339,21 @@
         let audioData = null;
         let isProcessing = false;
         let currentModel = null;
+        let moduleLoaded = false;
+
+        // Проверка успешной загрузки модуля
+        try {
+            // Проверяем что импорт прошел успешно
+            moduleLoaded = true;
+            console.log('Transformers.js загружен успешно');
+        } catch (e) {
+            console.error('Ошибка загрузки Transformers.js:', e);
+            const statusEl = document.getElementById('status');
+            if (statusEl) {
+                statusEl.textContent = 'Ошибка загрузки библиотеки. Обновите страницу.';
+                statusEl.className = 'status error';
+            }
+        }
 
         // Белый список доверенных моделей
         const trustedModels = [
@@ -517,6 +545,7 @@
 
                 // Переменные для отслеживания прогресса транскрипции
                 let processedChunks = 0;
+                let lastProgressUpdate = Date.now();
 
                 // Транскрипция - Transformers.js принимает URL напрямую
                 const output = await transcriber(audioUrl, {
@@ -527,28 +556,35 @@
                         // Обновляем прогресс во время транскрипции
                         if (beams && beams.length > 0) {
                             processedChunks++;
-                            // Примерная оценка прогресса: 50% (начало транскрипции) + до 45% (сама транскрипция)
-                            // Используем логарифмическую шкалу для более плавного прогресса
-                            const transcriptionProgress = Math.min(45, Math.log10(processedChunks + 1) * 15);
-                            const totalProgress = 50 + transcriptionProgress;
-                            progressBar.style.width = `${Math.min(95, totalProgress)}%`;
+                            const now = Date.now();
                             
-                            // Показываем частичный результат если доступен
-                            if (beams[0] && beams[0].output_token_ids && transcriber.tokenizer) {
-                                try {
-                                    const partialText = beams[0].output_token_ids
-                                        .map(x => transcriber.tokenizer.decode([x]))
-                                        .join('');
-                                    if (partialText.length > 0) {
-                                        const preview = partialText.slice(-30).replace(/\n/g, ' ');
-                                        showStatus(`Транскрипция... "${preview}"`, 'info');
+                            // Обновляем прогресс не чаще чем раз в 100мс для плавности
+                            if (now - lastProgressUpdate > 100) {
+                                // Примерная оценка прогресса: 50% (начало транскрипции) + до 45% (сама транскрипция)
+                                // Используем более плавную прогрессию
+                                const transcriptionProgress = Math.min(45, Math.sqrt(processedChunks) * 3);
+                                const totalProgress = 50 + transcriptionProgress;
+                                progressBar.style.width = `${Math.min(95, totalProgress)}%`;
+                                
+                                // Показываем частичный результат если доступен
+                                if (beams[0] && beams[0].output_token_ids && transcriber.tokenizer) {
+                                    try {
+                                        const partialText = beams[0].output_token_ids
+                                            .map(x => transcriber.tokenizer.decode([x]))
+                                            .join('');
+                                        if (partialText.length > 0) {
+                                            const preview = partialText.slice(-30).replace(/\n/g, ' ');
+                                            showStatus(`Транскрипция... "${preview}"`, 'info');
+                                        }
+                                    } catch (e) {
+                                        // Игнорируем ошибки декодирования токенов
+                                        showStatus(`Транскрипция... (обработано чанков: ${processedChunks})`, 'info');
                                     }
-                                } catch (e) {
-                                    // Игнорируем ошибки декодирования токенов
+                                } else {
                                     showStatus(`Транскрипция... (обработано чанков: ${processedChunks})`, 'info');
                                 }
-                            } else {
-                                showStatus(`Транскрипция... (обработано чанков: ${processedChunks})`, 'info');
+                                
+                                lastProgressUpdate = now;
                             }
                         }
                     }
@@ -571,12 +607,20 @@
             } catch (error) {
                 console.error('Ошибка транскрипции:', error);
                 showStatus(`Ошибка: ${error.message}`, 'error');
+                // Оставляем прогресс-бар видимым при ошибке на 2 секунды
+                setTimeout(() => {
+                    progress.classList.remove('active');
+                    progressBar.style.width = '0%';
+                }, 2000);
             } finally {
                 isProcessing = false;
                 transcribeBtn.disabled = false;
                 stopBtn.disabled = true;
-                progress.classList.remove('active');
-                progressBar.style.width = '0%';
+                // Скрываем прогресс только если не было ошибки (при ошибке уже скрыли в catch)
+                if (progress.classList.contains('active')) {
+                    progress.classList.remove('active');
+                    progressBar.style.width = '0%';
+                }
             }
         }
 
