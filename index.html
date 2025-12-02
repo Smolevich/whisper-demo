@@ -292,8 +292,8 @@
                 <label for="outputFormats">Форматы вывода</label>
                 <div class="formats-checkboxes" id="formatsContainer">
                     <label><input type="checkbox" value="txt" checked> TXT (текст)</label>
-                    <label><input type="checkbox" value="json" checked> JSON (с метками времени)</label>
-                    <label><input type="checkbox" value="srt"> SRT (субтитры)</label>
+                    <label><input type="checkbox" value="srt" checked> SRT (субтитры)</label>
+                    <label><input type="checkbox" value="json"> JSON (с метками времени)</label>
                     <label><input type="checkbox" value="vtt"> VTT (веб-субтитры)</label>
                     <label><input type="checkbox" value="tsv"> TSV (таблица)</label>
                 </div>
@@ -573,25 +573,24 @@
         // Обработка ошибок на уровне страницы для предотвращения белого экрана
         window.addEventListener('error', (event) => {
             console.error('Глобальная ошибка:', event.error);
-            event.preventDefault(); // Предотвращаем стандартную обработку ошибки
             
-            // Восстанавливаем интерфейс
-            try {
-                if (isProcessing) {
-                    showStatus('Произошла ошибка. Попробуйте обновить страницу или использовать модель tiny.', 'error');
-                    isProcessing = false;
-                    if (transcribeBtn) transcribeBtn.disabled = false;
-                    if (stopBtn) stopBtn.disabled = true;
-                    if (progress) {
-                        progress.classList.remove('active');
-                        if (progressBar) progressBar.style.width = '0%';
+            // Восстанавливаем интерфейс асинхронно чтобы не блокировать
+            setTimeout(() => {
+                try {
+                    if (isProcessing) {
+                        showStatus('Произошла ошибка. Попробуйте обновить страницу или использовать модель tiny.', 'error');
+                        isProcessing = false;
+                        if (transcribeBtn) transcribeBtn.disabled = false;
+                        if (stopBtn) stopBtn.disabled = true;
+                        if (progress) {
+                            progress.classList.remove('active');
+                            if (progressBar) progressBar.style.width = '0%';
+                        }
                     }
+                } catch (e) {
+                    console.error('Ошибка при восстановлении интерфейса:', e);
                 }
-            } catch (e) {
-                console.error('Ошибка при восстановлении интерфейса:', e);
-            }
-            
-            return false; // Предотвращаем дальнейшую обработку ошибки
+            }, 0);
         });
         
         window.addEventListener('unhandledrejection', (event) => {
@@ -672,7 +671,16 @@
 
             try {
                 const modelName = modelSelect.value;
-                const language = languageSelect.value === 'auto' ? null : languageSelect.value;
+                // Преобразуем язык в правильный формат для Whisper
+                let language = null;
+                if (languageSelect.value !== 'auto') {
+                    // Маппинг языков для Whisper (нужен код языка, не название)
+                    const languageMap = {
+                        'ru': 'ru',  // Русский
+                        'en': 'en'   // English
+                    };
+                    language = languageMap[languageSelect.value] || languageSelect.value;
+                }
 
                 // Валидация модели
                 validateModel(modelName);
