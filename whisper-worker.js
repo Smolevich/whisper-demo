@@ -1,16 +1,16 @@
 // whisper-worker.js - Изолированный поток для Whisper
 // Загружаем Transformers.js через importScripts для Worker
-// Используем динамический импорт для модулей
+// Используем ESM версию через динамический импорт
 let pipeline, env;
 
 async function initTransformers() {
     if (pipeline && env) return;
     
-    // Используем динамический импорт для модулей в Worker
+    // Используем динамический импорт для ESM модулей в Worker
     const transformers = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1');
     pipeline = transformers.pipeline;
     env = transformers.env;
-    
+
     env.allowLocalModels = false;
     env.allowRemoteModels = true;
     env.useBrowserCache = true;

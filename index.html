@@ -405,7 +405,7 @@
             if (worker) return worker;
             
             try {
-                // Создаем Worker как модуль для поддержки import
+                // Создаем Worker как модуль для поддержки динамического import
                 worker = new Worker('whisper-worker.js', { type: 'module' });
                 
                 worker.addEventListener('message', (e) => {
@@ -538,8 +538,19 @@
         const resultText = document.getElementById('resultText');
         const languageSelect = document.getElementById('language');
         const modelSelect = document.getElementById('model');
+        const modelTypeSelect = document.getElementById('modelType');
+        const taskSelect = document.getElementById('task');
         const formatsContainer = document.getElementById('formatsContainer');
         const downloadButtons = document.getElementById('downloadButtons');
+        const advancedSettingsBtn = document.getElementById('advancedSettingsBtn');
+        const accordion = advancedSettingsBtn?.closest('.accordion');
+        
+        // Accordion для дополнительных настроек
+        if (advancedSettingsBtn && accordion) {
+            advancedSettingsBtn.addEventListener('click', () => {
+                accordion.classList.toggle('active');
+            });
+        }
         
         // Функции генерации форматов
         function formatTime(seconds) {
@@ -896,14 +907,17 @@
                 // Конфигурация
                 const config = modelConfigs[modelName] || modelConfigs['Xenova/whisper-base'];
                 
+                // Получаем task из UI
+                const task = taskSelect.value; // 'transcribe' или 'translate'
+                
                 const transcriptionOptions = {
                     ...config,
                     return_timestamps: true,
+                    task: task,
                 };
                 
                 if (language) {
                     transcriptionOptions.language = language;
-                    transcriptionOptions.task = 'transcribe'; // ВАЖНО: гарантирует транскрипцию на выбранном языке
                 }
                 
                 // Запускаем транскрипцию в Worker
