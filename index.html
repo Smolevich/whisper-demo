@@ -282,15 +282,15 @@
             min-width: 300px;
             max-width: 400px;
             z-index: 1000;
-            display: none;
+            visibility: hidden;
             opacity: 0;
             transform: translateY(-10px);
-            transition: opacity 0.2s, transform 0.2s;
+            transition: opacity 0.2s, transform 0.2s, visibility 0.2s;
             pointer-events: none;
         }
 
         .settings-dropdown.active {
-            display: block;
+            visibility: visible;
             opacity: 1;
             transform: translateY(0);
             pointer-events: auto;
