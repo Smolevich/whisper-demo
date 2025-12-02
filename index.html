@@ -341,6 +341,10 @@
         let currentModel = null;
         let moduleLoaded = false;
         let progressInterval = null;
+        let transcriptionTimeout = null;
+        let heartbeatInterval = null;
+        const TRANSCRIPTION_TIMEOUT = 10 * 60 * 1000; // 10 минут таймаут для транскрипции
+        const HEARTBEAT_INTERVAL = 1000; // Проверка каждую секунду
 
         // Проверка успешной загрузки модуля
         try {
@@ -474,16 +478,45 @@
 
         stopBtn.addEventListener('click', () => {
             isProcessing = false;
-            // Останавливаем интервал прогресса
+            // Останавливаем все интервалы и таймауты
             if (progressInterval) {
                 clearInterval(progressInterval);
                 progressInterval = null;
+            }
+            if (heartbeatInterval) {
+                clearInterval(heartbeatInterval);
+                heartbeatInterval = null;
+            }
+            if (transcriptionTimeout) {
+                clearTimeout(transcriptionTimeout);
+                transcriptionTimeout = null;
             }
             transcribeBtn.disabled = false;
             stopBtn.disabled = true;
             progress.classList.remove('active');
             progressBar.style.width = '0%';
             showStatus('Остановлено пользователем', 'info');
+        });
+        
+        // Обработка ошибок на уровне страницы для предотвращения белого экрана
+        window.addEventListener('error', (event) => {
+            console.error('Глобальная ошибка:', event.error);
+            if (isProcessing) {
+                showStatus('Произошла ошибка. Попробуйте обновить страницу.', 'error');
+                isProcessing = false;
+                transcribeBtn.disabled = false;
+                stopBtn.disabled = true;
+            }
+        });
+        
+        window.addEventListener('unhandledrejection', (event) => {
+            console.error('Необработанное отклонение промиса:', event.reason);
+            if (isProcessing) {
+                showStatus('Произошла ошибка. Попробуйте обновить страницу.', 'error');
+                isProcessing = false;
+                transcribeBtn.disabled = false;
+                stopBtn.disabled = true;
+            }
         });
 
         async function transcribe() {
@@ -492,12 +525,42 @@
                 return;
             }
 
+            // Очистка предыдущих таймаутов и интервалов
+            if (transcriptionTimeout) {
+                clearTimeout(transcriptionTimeout);
+                transcriptionTimeout = null;
+            }
+            if (heartbeatInterval) {
+                clearInterval(heartbeatInterval);
+                heartbeatInterval = null;
+            }
+
             isProcessing = true;
             transcribeBtn.disabled = true;
             stopBtn.disabled = false;
             result.classList.remove('active');
             progress.classList.add('active');
             progressBar.style.width = '10%';
+            
+            let lastProgressUpdate = Date.now();
+            
+            // Heartbeat для отслеживания зависаний
+            heartbeatInterval = setInterval(() => {
+                if (!isProcessing) {
+                    clearInterval(heartbeatInterval);
+                    heartbeatInterval = null;
+                    return;
+                }
+                
+                const now = Date.now();
+                const timeSinceUpdate = now - lastProgressUpdate;
+                
+                // Если прогресс не обновлялся более 30 секунд - возможное зависание
+                if (timeSinceUpdate > 30000) {
+                    console.warn('Возможное зависание: прогресс не обновлялся', timeSinceUpdate, 'мс');
+                    showStatus('Обработка занимает больше времени чем ожидалось...', 'info');
+                }
+            }, HEARTBEAT_INTERVAL);
 
             try {
                 const modelName = modelSelect.value;
@@ -570,14 +633,30 @@
                     simulatedProgress = Math.min(95, simulatedProgress + 0.5);
                     progressBar.style.width = `${simulatedProgress}%`;
                     showStatus('Транскрипция... (обработка аудио)', 'info');
+                    lastProgressUpdate = Date.now(); // Обновляем время последнего обновления
                 }, 200);
 
-                // Транскрипция - Transformers.js принимает URL напрямую
-                const output = await transcriber(audioUrl, {
+                // Таймаут для транскрипции
+                const transcriptionPromise = transcriber(audioUrl, {
                     ...config,
                     return_timestamps: true,
                     language: language,
                 });
+
+                const timeoutPromise = new Promise((_, reject) => {
+                    transcriptionTimeout = setTimeout(() => {
+                        reject(new Error('Таймаут транскрипции: обработка заняла слишком много времени. Попробуйте файл меньшего размера или модель tiny/base.'));
+                    }, TRANSCRIPTION_TIMEOUT);
+                });
+
+                // Транскрипция с таймаутом
+                const output = await Promise.race([transcriptionPromise, timeoutPromise]);
+                
+                // Отменяем таймаут если транскрипция завершилась успешно
+                if (transcriptionTimeout) {
+                    clearTimeout(transcriptionTimeout);
+                    transcriptionTimeout = null;
+                }
 
                 // Останавливаем симуляцию прогресса после завершения
                 if (progressInterval) {
@@ -601,17 +680,37 @@
                 
             } catch (error) {
                 console.error('Ошибка транскрипции:', error);
-                showStatus(`Ошибка: ${error.message}`, 'error');
-                // Оставляем прогресс-бар видимым при ошибке на 2 секунды
+                
+                // Более информативные сообщения об ошибках
+                let errorMessage = error.message;
+                if (error.message.includes('timeout') || error.message.includes('Таймаут')) {
+                    errorMessage = 'Транскрипция заняла слишком много времени. Попробуйте:\n- Использовать модель tiny или base\n- Разделить файл на части\n- Проверить подключение к интернету';
+                } else if (error.message.includes('memory') || error.message.includes('Memory')) {
+                    errorMessage = 'Недостаточно памяти. Попробуйте модель tiny или закройте другие вкладки браузера.';
+                } else if (error.message.includes('network') || error.message.includes('fetch')) {
+                    errorMessage = 'Ошибка сети. Проверьте подключение к интернету.';
+                }
+                
+                showStatus(`Ошибка: ${errorMessage}`, 'error');
+                
+                // Оставляем прогресс-бар видимым при ошибке на 3 секунды
                 setTimeout(() => {
                     progress.classList.remove('active');
                     progressBar.style.width = '0%';
-                }, 2000);
+                }, 3000);
             } finally {
-                // Останавливаем интервал прогресса если он был запущен
+                // Останавливаем все интервалы и таймауты
                 if (progressInterval) {
                     clearInterval(progressInterval);
                     progressInterval = null;
+                }
+                if (heartbeatInterval) {
+                    clearInterval(heartbeatInterval);
+                    heartbeatInterval = null;
+                }
+                if (transcriptionTimeout) {
+                    clearTimeout(transcriptionTimeout);
+                    transcriptionTimeout = null;
                 }
                 isProcessing = false;
                 transcribeBtn.disabled = false;
