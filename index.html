@@ -392,7 +392,7 @@
                 <div class="memory-bar-fill" id="memoryBarFill" style="width: 0%"></div>
             </div>
             <div class="tech-info">
-                💡 WebAssembly оптимизация: SIMD включен (ускорение в 2-4×) | Потоков: <span id="numThreadsDisplay">1</span> (экономия памяти)
+                💡 Мониторинг памяти WebAssembly во время транскрипции | Работает в Chrome/Edge
             </div>
         </div>
 
@@ -519,10 +519,6 @@
         env.allowLocalModels = false;
         env.allowRemoteModels = true;
         env.useBrowserCache = true;
-
-        // Оптимизация ONNX Runtime для экономии памяти
-        env.backends.onnx.wasm.numThreads = 1; // Ограничиваем количество потоков для экономии памяти
-        env.backends.onnx.wasm.simd = true; // Включаем SIMD для ускорения
 
         // Модели кэшируются в IndexedDB браузера после первой загрузки
         // При повторном использовании модели загружаются из кэша (быстро)
@@ -699,7 +695,6 @@
         const memoryLimit = document.getElementById('memoryLimit');
         const memoryPercent = document.getElementById('memoryPercent');
         const memoryBarFill = document.getElementById('memoryBarFill');
-        const numThreadsDisplay = document.getElementById('numThreadsDisplay');
 
         // Функция мониторинга памяти
         function updateMemoryStats() {
@@ -751,11 +746,6 @@
             if (memoryMonitor) {
                 memoryMonitor.classList.remove('active');
             }
-        }
-
-        // Отображение количества потоков
-        if (numThreadsDisplay) {
-            numThreadsDisplay.textContent = env.backends.onnx.wasm.numThreads || 1;
         }
 
         // Выпадающее меню для дополнительных настроек

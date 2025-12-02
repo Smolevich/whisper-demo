@@ -129,6 +129,30 @@ The browser app is automatically deployed to GitHub Pages on push to main via `.
 5. **Docker Volumes**: Models are cached in `./models` volume to avoid re-downloading on container restarts
 6. **API Endpoint**: WhisperX creates output files named after the input file stem, not the UUID - search for `*.json` in output directory
 
+## Git Commit Guidelines
+
+When creating commits for this repository:
+
+**IMPORTANT**: Do NOT include any of the following in commit messages:
+- ❌ "🤖 Generated with [Claude Code]"
+- ❌ "Co-Authored-By: Claude <noreply@anthropic.com>"
+- ❌ Any AI-generated signatures or attributions
+
+**Commit Message Format**:
+- Use clear, descriptive messages in Russian
+- First line: Brief summary (imperative mood)
+- Optional: Detailed bullet points after blank line
+- Focus on WHAT changed and WHY, not HOW
+
+**Examples**:
+```
+Добавлена поддержка Large модели
+
+- Модель Whisper Large в списке выбора
+- Оптимальная конфигурация для браузера
+- Мониторинг памяти во время транскрипции
+```
+
 ## GitHub Pages Deployment
 
 The workflow deploys the entire repository root to Pages. This means:
