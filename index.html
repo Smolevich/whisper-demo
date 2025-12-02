@@ -475,8 +475,17 @@
                         transcriber = await pipeline('automatic-speech-recognition', modelName, {
                             progress_callback: (progress) => {
                                 if (progress.status === 'progress') {
-                                    const percent = Math.round(progress.progress * 100);
-                                    progressBar.style.width = `${20 + percent * 0.2}%`;
+                                    // progress.progress может быть от 0 до 1 или уже в процентах
+                                    let percent = progress.progress;
+                                    if (percent <= 1) {
+                                        percent = percent * 100; // Конвертируем в проценты если от 0 до 1
+                                    }
+                                    // Ограничиваем от 0 до 100
+                                    percent = Math.max(0, Math.min(100, Math.round(percent)));
+                                    
+                                    // Прогресс-бар: 20% (начало) + до 20% (загрузка модели) = максимум 40%
+                                    const barPercent = 20 + (percent * 0.2);
+                                    progressBar.style.width = `${barPercent}%`;
                                     showStatus(`Загрузка модели: ${percent}%`, 'info');
                                 }
                             }
