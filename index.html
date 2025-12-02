@@ -340,6 +340,7 @@
         let isProcessing = false;
         let currentModel = null;
         let moduleLoaded = false;
+        let progressInterval = null;
 
         // Проверка успешной загрузки модуля
         try {
@@ -473,8 +474,15 @@
 
         stopBtn.addEventListener('click', () => {
             isProcessing = false;
+            // Останавливаем интервал прогресса
+            if (progressInterval) {
+                clearInterval(progressInterval);
+                progressInterval = null;
+            }
             transcribeBtn.disabled = false;
             stopBtn.disabled = true;
+            progress.classList.remove('active');
+            progressBar.style.width = '0%';
             showStatus('Остановлено пользователем', 'info');
         });
 
@@ -543,52 +551,39 @@
                 // Получаем конфигурацию для текущей модели
                 const config = modelConfigs[modelName] || modelConfigs['Xenova/whisper-base'];
 
-                // Переменные для отслеживания прогресса транскрипции
-                let processedChunks = 0;
-                let lastProgressUpdate = Date.now();
+                // Симуляция прогресса во время транскрипции
+                // callback_function может не поддерживаться для ASR pipeline в Transformers.js
+                let simulatedProgress = 50; // Начинаем с 50%
+                
+                // Очищаем предыдущий интервал если был
+                if (progressInterval) {
+                    clearInterval(progressInterval);
+                }
+                
+                // Обновляем прогресс каждые 200мс
+                progressInterval = setInterval(() => {
+                    if (!isProcessing) {
+                        clearInterval(progressInterval);
+                        progressInterval = null;
+                        return;
+                    }
+                    simulatedProgress = Math.min(95, simulatedProgress + 0.5);
+                    progressBar.style.width = `${simulatedProgress}%`;
+                    showStatus('Транскрипция... (обработка аудио)', 'info');
+                }, 200);
 
                 // Транскрипция - Transformers.js принимает URL напрямую
                 const output = await transcriber(audioUrl, {
                     ...config,
                     return_timestamps: true,
                     language: language,
-                    callback_function: (beams) => {
-                        // Обновляем прогресс во время транскрипции
-                        if (beams && beams.length > 0) {
-                            processedChunks++;
-                            const now = Date.now();
-                            
-                            // Обновляем прогресс не чаще чем раз в 100мс для плавности
-                            if (now - lastProgressUpdate > 100) {
-                                // Примерная оценка прогресса: 50% (начало транскрипции) + до 45% (сама транскрипция)
-                                // Используем более плавную прогрессию
-                                const transcriptionProgress = Math.min(45, Math.sqrt(processedChunks) * 3);
-                                const totalProgress = 50 + transcriptionProgress;
-                                progressBar.style.width = `${Math.min(95, totalProgress)}%`;
-                                
-                                // Показываем частичный результат если доступен
-                                if (beams[0] && beams[0].output_token_ids && transcriber.tokenizer) {
-                                    try {
-                                        const partialText = beams[0].output_token_ids
-                                            .map(x => transcriber.tokenizer.decode([x]))
-                                            .join('');
-                                        if (partialText.length > 0) {
-                                            const preview = partialText.slice(-30).replace(/\n/g, ' ');
-                                            showStatus(`Транскрипция... "${preview}"`, 'info');
-                                        }
-                                    } catch (e) {
-                                        // Игнорируем ошибки декодирования токенов
-                                        showStatus(`Транскрипция... (обработано чанков: ${processedChunks})`, 'info');
-                                    }
-                                } else {
-                                    showStatus(`Транскрипция... (обработано чанков: ${processedChunks})`, 'info');
-                                }
-                                
-                                lastProgressUpdate = now;
-                            }
-                        }
-                    }
                 });
+
+                // Останавливаем симуляцию прогресса после завершения
+                if (progressInterval) {
+                    clearInterval(progressInterval);
+                    progressInterval = null;
+                }
 
                 // Освобождаем память
                 URL.revokeObjectURL(audioUrl);
@@ -613,6 +608,11 @@
                     progressBar.style.width = '0%';
                 }, 2000);
             } finally {
+                // Останавливаем интервал прогресса если он был запущен
+                if (progressInterval) {
+                    clearInterval(progressInterval);
+                    progressInterval = null;
+                }
                 isProcessing = false;
                 transcribeBtn.disabled = false;
                 stopBtn.disabled = true;
