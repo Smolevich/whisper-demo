@@ -1085,6 +1085,13 @@
                 if (languageSelect.value !== 'auto') {
                     language = languageSelect.value;
                 }
+
+                // Оценка примерной длины файла по размеру (в минутах)
+                let estimatedDuration = null;
+                if (audioData) {
+                    const fileSizeMB = audioData.size / (1024 * 1024);
+                    estimatedDuration = fileSizeMB * 0.5; // ~0.5 мин на МБ
+                }
                 
                 // Для english-only моделей язык должен быть null или 'en'
                 if (modelName.includes('.en') && language && language !== 'en') {
@@ -1100,10 +1107,7 @@
                 validateModel(modelName);
                 
                 // Предупреждение о качестве base модели и длинных файлах
-                if (modelName === 'Xenova/whisper-base' && audioData) {
-                    const fileSizeMB = audioData.size / (1024 * 1024);
-                    const estimatedDuration = fileSizeMB * 0.5; // Примерная оценка: ~0.5 мин на МБ
-                    
+                if (modelName === 'Xenova/whisper-base' && estimatedDuration !== null) {
                     if (estimatedDuration > 10) {
                         showStatus('⚠️ Длинный файл. Base модель может дать низкое качество. Рекомендуется использовать Tiny для скорости или Small/Medium для качества.', 'info');
                         await new Promise(resolve => setTimeout(resolve, 3000)); // Показываем предупреждение 3 секунды
@@ -1111,6 +1115,21 @@
                         showStatus('⚠️ Base модель имеет ограниченное качество. Для лучших результатов используйте Small или Medium.', 'info');
                         await new Promise(resolve => setTimeout(resolve, 2000));
                     }
+                }
+
+                // Ограничение для модели Medium на очень длинных файлах, чтобы избежать ошибок OrtRun/memory
+                if (modelName === 'Xenova/whisper-medium' && estimatedDuration !== null && estimatedDuration > 15) {
+                    showStatus('Браузеру не хватает ресурсов для обработки такого длинного файла с моделью Medium. Попробуйте:\n- выбрать модель Small или Base\n- либо разделить файл на несколько частей.', 'error');
+                    isProcessing = false;
+                    transcribeBtn.disabled = false;
+                    stopBtn.disabled = true;
+                    if (progress) {
+                        progress.classList.remove('active');
+                    }
+                    if (progressBar) {
+                        progressBar.style.width = '0%';
+                    }
+                    return;
                 }
 
                 // Создаём pipeline только при смене модели
@@ -1315,7 +1334,7 @@
                 let errorMessage = error.message;
                 if (error.message.includes('timeout') || error.message.includes('Таймаут')) {
                     errorMessage = 'Транскрипция заняла слишком много времени. Попробуйте:\n- Использовать модель tiny или base\n- Разделить файл на части\n- Проверить подключение к интернету';
-                } else if (error.message.includes('memory') || error.message.includes('Memory')) {
+                } else if (error.message.includes('memory') || error.message.includes('Memory') || error.message.includes('OrtRun')) {
                     errorMessage = 'Недостаточно памяти. Попробуйте модель tiny или закройте другие вкладки браузера.';
                 } else if (error.message.includes('network') || error.message.includes('fetch')) {
                     errorMessage = 'Ошибка сети. Проверьте подключение к интернету.';
