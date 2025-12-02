@@ -317,6 +317,10 @@
         env.allowLocalModels = false;
         env.allowRemoteModels = true;
         env.useBrowserCache = true;
+        
+        // Модели кэшируются в IndexedDB браузера после первой загрузки
+        // При повторном использовании модели загружаются из кэша (быстро)
+        // Кэш сохраняется между сессиями браузера
 
         let transcriber = null;
         let audioData = null;
@@ -504,18 +508,50 @@
 
                 // Создаем URL для аудио файла
                 const audioUrl = URL.createObjectURL(audioData);
-                progressBar.style.width = '60%';
+                progressBar.style.width = '50%';
 
                 showStatus('Транскрипция...', 'info');
 
                 // Получаем конфигурацию для текущей модели
                 const config = modelConfigs[modelName] || modelConfigs['Xenova/whisper-base'];
 
+                // Переменные для отслеживания прогресса транскрипции
+                let processedChunks = 0;
+
                 // Транскрипция - Transformers.js принимает URL напрямую
                 const output = await transcriber(audioUrl, {
                     ...config,
                     return_timestamps: true,
                     language: language,
+                    callback_function: (beams) => {
+                        // Обновляем прогресс во время транскрипции
+                        if (beams && beams.length > 0) {
+                            processedChunks++;
+                            // Примерная оценка прогресса: 50% (начало транскрипции) + до 45% (сама транскрипция)
+                            // Используем логарифмическую шкалу для более плавного прогресса
+                            const transcriptionProgress = Math.min(45, Math.log10(processedChunks + 1) * 15);
+                            const totalProgress = 50 + transcriptionProgress;
+                            progressBar.style.width = `${Math.min(95, totalProgress)}%`;
+                            
+                            // Показываем частичный результат если доступен
+                            if (beams[0] && beams[0].output_token_ids && transcriber.tokenizer) {
+                                try {
+                                    const partialText = beams[0].output_token_ids
+                                        .map(x => transcriber.tokenizer.decode([x]))
+                                        .join('');
+                                    if (partialText.length > 0) {
+                                        const preview = partialText.slice(-30).replace(/\n/g, ' ');
+                                        showStatus(`Транскрипция... "${preview}"`, 'info');
+                                    }
+                                } catch (e) {
+                                    // Игнорируем ошибки декодирования токенов
+                                    showStatus(`Транскрипция... (обработано чанков: ${processedChunks})`, 'info');
+                                }
+                            } else {
+                                showStatus(`Транскрипция... (обработано чанков: ${processedChunks})`, 'info');
+                            }
+                        }
+                    }
                 });
 
                 // Освобождаем память
