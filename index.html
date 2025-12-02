@@ -591,12 +591,20 @@
         const formatsContainer = document.getElementById('formatsContainer');
         const downloadButtons = document.getElementById('downloadButtons');
         const advancedSettingsBtn = document.getElementById('advancedSettingsBtn');
-        const accordion = advancedSettingsBtn?.closest('.accordion');
+        const advancedSettings = document.getElementById('advancedSettings');
         
-        // Accordion для дополнительных настроек
-        if (advancedSettingsBtn && accordion) {
-            advancedSettingsBtn.addEventListener('click', () => {
-                accordion.classList.toggle('active');
+        // Выпадающее меню для дополнительных настроек
+        if (advancedSettingsBtn && advancedSettings) {
+            advancedSettingsBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                advancedSettings.classList.toggle('active');
+            });
+            
+            // Закрытие при клике вне меню
+            document.addEventListener('click', (e) => {
+                if (!advancedSettings.contains(e.target) && e.target !== advancedSettingsBtn) {
+                    advancedSettings.classList.remove('active');
+                }
             });
         }
         
