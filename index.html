@@ -287,6 +287,17 @@
                 </select>
                 <span class="model-info">⚠️ Base модель имеет ограниченное качество. Для лучших результатов используйте Small или Medium. Для длинных файлов (>10 мин) рекомендуется Tiny или Base.</span>
             </div>
+            
+            <div class="control-group">
+                <label for="outputFormats">Форматы вывода</label>
+                <div class="formats-checkboxes" id="formatsContainer">
+                    <label><input type="checkbox" value="txt" checked> TXT (текст)</label>
+                    <label><input type="checkbox" value="json" checked> JSON (с метками времени)</label>
+                    <label><input type="checkbox" value="srt"> SRT (субтитры)</label>
+                    <label><input type="checkbox" value="vtt"> VTT (веб-субтитры)</label>
+                    <label><input type="checkbox" value="tsv"> TSV (таблица)</label>
+                </div>
+            </div>
         </div>
 
         <div class="button-group">
@@ -306,6 +317,7 @@
         <div class="result" id="result">
             <h3>Результат транскрипции:</h3>
             <div class="result-text" id="resultText"></div>
+            <div class="download-buttons" id="downloadButtons" style="display: none;"></div>
         </div>
     </div>
 
@@ -408,6 +420,66 @@
         const resultText = document.getElementById('resultText');
         const languageSelect = document.getElementById('language');
         const modelSelect = document.getElementById('model');
+        const formatsContainer = document.getElementById('formatsContainer');
+        const downloadButtons = document.getElementById('downloadButtons');
+        
+        // Функции генерации форматов
+        function formatTime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            const ms = Math.floor((seconds % 1) * 1000);
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')},${ms.toString().padStart(3, '0')}`;
+        }
+        
+        function formatTimeVTT(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            const ms = Math.floor((seconds % 1) * 1000);
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+        }
+        
+        function generateSRT(chunks) {
+            if (!chunks || chunks.length === 0) return '';
+            return chunks.map((chunk, index) => {
+                const start = formatTime(chunk.timestamp[0]);
+                const end = formatTime(chunk.timestamp[1]);
+                return `${index + 1}\n${start} --> ${end}\n${chunk.text}\n`;
+            }).join('\n');
+        }
+        
+        function generateVTT(chunks) {
+            if (!chunks || chunks.length === 0) return '';
+            let vtt = 'WEBVTT\n\n';
+            chunks.forEach(chunk => {
+                const start = formatTimeVTT(chunk.timestamp[0]);
+                const end = formatTimeVTT(chunk.timestamp[1]);
+                vtt += `${start} --> ${end}\n${chunk.text}\n\n`;
+            });
+            return vtt;
+        }
+        
+        function generateTSV(chunks) {
+            if (!chunks || chunks.length === 0) return '';
+            let tsv = 'Start\tEnd\tText\n';
+            chunks.forEach(chunk => {
+                tsv += `${chunk.timestamp[0].toFixed(3)}\t${chunk.timestamp[1].toFixed(3)}\t${chunk.text}\n`;
+            });
+            return tsv;
+        }
+        
+        function downloadFile(content, filename, mimeType) {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
 
         // Обработка drag & drop
         uploadArea.addEventListener('click', () => fileInput.click());
@@ -682,7 +754,12 @@
                     }
                     simulatedProgress = Math.min(95, simulatedProgress + 0.5);
                     progressBar.style.width = `${simulatedProgress}%`;
-                    showStatus('Транскрипция... (обработка аудио)', 'info');
+                    
+                    // Более информативный статус
+                    const elapsed = Math.floor((Date.now() - (lastProgressUpdate - 30000)) / 1000);
+                    const minutes = Math.floor(elapsed / 60);
+                    const seconds = elapsed % 60;
+                    showStatus(`Транскрипция... (обработка аудио, прошло: ${minutes}м ${seconds}с, прогресс: ${Math.round(simulatedProgress)}%)`, 'info');
                     lastProgressUpdate = Date.now(); // Обновляем время последнего обновления
                 }, 200);
 
@@ -741,6 +818,63 @@
                 
                 resultText.textContent = text;
                 result.classList.add('active');
+                
+                // Генерация и скачивание файлов в выбранных форматах
+                const selectedFormats = Array.from(formatsContainer.querySelectorAll('input[type="checkbox"]:checked'))
+                    .map(cb => cb.value);
+                
+                downloadButtons.innerHTML = '';
+                downloadButtons.style.display = selectedFormats.length > 0 ? 'flex' : 'none';
+                
+                const fileName = audioData.name.replace(/\.[^/.]+$/, '');
+                const chunks = output.chunks || [];
+                
+                selectedFormats.forEach(format => {
+                    let content = '';
+                    let filename = '';
+                    let mimeType = '';
+                    
+                    switch(format) {
+                        case 'txt':
+                            content = text;
+                            filename = `${fileName}.txt`;
+                            mimeType = 'text/plain';
+                            break;
+                        case 'json':
+                            content = JSON.stringify({
+                                text: text,
+                                chunks: chunks,
+                                language: language || 'auto',
+                                model: modelName
+                            }, null, 2);
+                            filename = `${fileName}.json`;
+                            mimeType = 'application/json';
+                            break;
+                        case 'srt':
+                            content = generateSRT(chunks);
+                            filename = `${fileName}.srt`;
+                            mimeType = 'text/srt';
+                            break;
+                        case 'vtt':
+                            content = generateVTT(chunks);
+                            filename = `${fileName}.vtt`;
+                            mimeType = 'text/vtt';
+                            break;
+                        case 'tsv':
+                            content = generateTSV(chunks);
+                            filename = `${fileName}.tsv`;
+                            mimeType = 'text/tab-separated-values';
+                            break;
+                    }
+                    
+                    if (content) {
+                        const btn = document.createElement('button');
+                        btn.className = 'download-btn';
+                        btn.textContent = `Скачать ${format.toUpperCase()}`;
+                        btn.onclick = () => downloadFile(content, filename, mimeType);
+                        downloadButtons.appendChild(btn);
+                    }
+                });
                 
             } catch (error) {
                 console.error('Ошибка транскрипции:', error);
