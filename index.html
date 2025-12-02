@@ -355,8 +355,69 @@
         let progressInterval = null;
         let transcriptionTimeout = null;
         let heartbeatInterval = null;
+        let worker = null; // Web Worker для изоляции обработки
         const TRANSCRIPTION_TIMEOUT = 10 * 60 * 1000; // 10 минут таймаут для транскрипции
         const HEARTBEAT_INTERVAL = 1000; // Проверка каждую секунду
+        
+        // Инициализация Web Worker для предотвращения белого экрана
+        function initWorker() {
+            if (worker) return worker;
+            
+            try {
+                worker = new Worker('whisper-worker.js');
+                
+                worker.addEventListener('message', (e) => {
+                    const { type, message, progress, error, result } = e.data;
+                    
+                    switch(type) {
+                        case 'status':
+                            showStatus(message, 'info');
+                            break;
+                            
+                        case 'loadProgress':
+                            const percent = Math.round(progress);
+                            progressBar.style.width = `${20 + percent * 0.2}%`;
+                            showStatus(`Загрузка модели: ${percent}%`, 'info');
+                            break;
+                            
+                        case 'modelLoaded':
+                            showStatus('Модель загружена', 'success');
+                            break;
+                            
+                        case 'result':
+                            handleTranscriptionResult(result);
+                            break;
+                            
+                        case 'error':
+                            showStatus(`Ошибка: ${error}`, 'error');
+                            isProcessing = false;
+                            transcribeBtn.disabled = false;
+                            stopBtn.disabled = true;
+                            progress.classList.remove('active');
+                            break;
+                            
+                        case 'stopped':
+                            showStatus('Остановлено', 'info');
+                            isProcessing = false;
+                            transcribeBtn.disabled = false;
+                            stopBtn.disabled = true;
+                            progress.classList.remove('active');
+                            break;
+                    }
+                });
+                
+                worker.addEventListener('error', (error) => {
+                    console.error('Worker error:', error);
+                    showStatus('Ошибка Worker. Используется обычный режим.', 'error');
+                    worker = null; // Отключаем Worker при ошибке
+                });
+                
+                return worker;
+            } catch (error) {
+                console.error('Не удалось создать Worker:', error);
+                return null; // Fallback на обычный режим
+            }
+        }
 
         // Проверка успешной загрузки модуля
         try {
@@ -772,11 +833,19 @@
                 }, 200);
 
                 // Таймаут для транскрипции
-                const transcriptionPromise = transcriber(audioUrl, {
+                // Правильная передача параметров для Whisper в Transformers.js
+                const transcriptionOptions = {
                     ...config,
                     return_timestamps: true,
-                    language: language,
-                });
+                };
+                
+                // Добавляем язык только если выбран (не auto) и явно указываем задачу транскрипции
+                if (language) {
+                    transcriptionOptions.language = language;
+                    transcriptionOptions.task = 'transcribe'; // ВАЖНО: гарантирует транскрипцию на выбранном языке
+                }
+                
+                const transcriptionPromise = transcriber(audioUrl, transcriptionOptions);
 
                 const timeoutPromise = new Promise((_, reject) => {
                     transcriptionTimeout = setTimeout(() => {
