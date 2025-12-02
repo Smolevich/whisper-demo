@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whisper в браузере</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 800px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: #666;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #f8f9ff;
+        }
+
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f0f2ff;
+        }
+
+        .upload-area.dragover {
+            border-color: #764ba2;
+            background: #e8ebff;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        label {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        select, input[type="text"] {
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        select:focus, input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        button {
+            flex: 1;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #e0e0e0;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .status.info {
+            background: #e3f2fd;
+            color: #1976d2;
+            display: block;
+        }
+
+        .status.success {
+            background: #e8f5e9;
+            color: #388e3c;
+            display: block;
+        }
+
+        .status.error {
+            background: #ffebee;
+            color: #c62828;
+            display: block;
+        }
+
+        .progress {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .progress.active {
+            display: block;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .result {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .result.active {
+            display: block;
+        }
+
+        .result-text {
+            color: #333;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .audio-player {
+            width: 100%;
+            margin-bottom: 20px;
+            border-radius: 8px;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .model-info {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 Whisper в браузере</h1>
+        <p class="subtitle">Транскрипция аудио прямо в браузере без сервера</p>
+
+        <div class="upload-area" id="uploadArea">
+            <div class="upload-icon">📁</div>
+            <p>Перетащите аудио файл сюда или нажмите для выбора</p>
+            <input type="file" id="fileInput" accept="audio/*,video/*">
+        </div>
+
+        <audio id="audioPlayer" class="audio-player" controls style="display: none;"></audio>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="language">Язык</label>
+                <select id="language">
+                    <option value="ru">Русский</option>
+                    <option value="en">English</option>
+                    <option value="auto">Автоопределение</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label for="model">Модель</label>
+                <select id="model">
+                    <option value="openai/whisper-tiny">Tiny (быстрая)</option>
+                    <option value="openai/whisper-base" selected>Base (базовая)</option>
+                    <option value="openai/whisper-small">Small (стандартная)</option>
+                    <option value="openai/whisper-medium">Medium (качественная)</option>
+                </select>
+                <span class="model-info">Больше модель = лучше качество, но медленнее</span>
+            </div>
+        </div>
+
+        <div class="button-group">
+            <button class="btn-primary" id="transcribeBtn" disabled>
+                Транскрибировать
+            </button>
+            <button class="btn-secondary" id="stopBtn" disabled>
+                Остановить
+            </button>
+        </div>
+
+        <div class="status" id="status"></div>
+        <div class="progress" id="progress">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+
+        <div class="result" id="result">
+            <h3>Результат транскрипции:</h3>
+            <div class="result-text" id="resultText"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1';
+
+        // Используем кэш для моделей
+        env.allowLocalModels = false;
+        env.allowRemoteModels = true;
+
+        let transcriber = null;
+        let audioData = null;
+        let isProcessing = false;
+
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const transcribeBtn = document.getElementById('transcribeBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const status = document.getElementById('status');
+        const progress = document.getElementById('progress');
+        const progressBar = document.getElementById('progressBar');
+        const result = document.getElementById('result');
+        const resultText = document.getElementById('resultText');
+        const languageSelect = document.getElementById('language');
+        const modelSelect = document.getElementById('model');
+
+        // Обработка drag & drop
+        uploadArea.addEventListener('click', () => fileInput.click());
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        async function handleFile(file) {
+            if (!file.type.startsWith('audio/') && !file.type.startsWith('video/')) {
+                showStatus('Пожалуйста, выберите аудио или видео файл', 'error');
+                return;
+            }
+
+            audioData = file;
+            const url = URL.createObjectURL(file);
+            audioPlayer.src = url;
+            audioPlayer.style.display = 'block';
+            transcribeBtn.disabled = false;
+            result.classList.remove('active');
+            showStatus(`Файл загружен: ${file.name}`, 'success');
+        }
+
+        transcribeBtn.addEventListener('click', async () => {
+            if (!audioData || isProcessing) return;
+            await transcribe();
+        });
+
+        stopBtn.addEventListener('click', () => {
+            isProcessing = false;
+            transcribeBtn.disabled = false;
+            stopBtn.disabled = true;
+            showStatus('Остановлено пользователем', 'info');
+        });
+
+        async function transcribe() {
+            if (!audioData) {
+                showStatus('Пожалуйста, выберите файл', 'error');
+                return;
+            }
+
+            isProcessing = true;
+            transcribeBtn.disabled = true;
+            stopBtn.disabled = false;
+            result.classList.remove('active');
+            progress.classList.add('active');
+            progressBar.style.width = '10%';
+
+            try {
+                const modelName = modelSelect.value;
+                const language = languageSelect.value === 'auto' ? null : languageSelect.value;
+
+                showStatus(`Загрузка модели ${modelName}...`, 'info');
+                progressBar.style.width = '20%';
+
+                // Инициализация транскрибера
+                if (!transcriber || transcriber.model !== modelName) {
+                    transcriber = await pipeline('automatic-speech-recognition', modelName);
+                }
+
+                progressBar.style.width = '40%';
+                showStatus('Обработка аудио...', 'info');
+
+                // Создаем URL для аудио файла
+                const audioUrl = URL.createObjectURL(audioData);
+                progressBar.style.width = '60%';
+
+                showStatus('Транскрипция...', 'info');
+
+                // Транскрипция - Transformers.js принимает URL напрямую
+                const output = await transcriber(audioUrl, {
+                    chunk_length_s: 30,
+                    return_timestamps: true,
+                    language: language,
+                });
+
+                // Освобождаем память
+                URL.revokeObjectURL(audioUrl);
+
+                if (!isProcessing) return;
+
+                progressBar.style.width = '100%';
+                
+                // Отображение результата
+                const text = output.text || (output.chunks ? output.chunks.map(c => c.text).join(' ') : 'Текст не найден');
+                resultText.textContent = text;
+                result.classList.add('active');
+                
+                showStatus('Транскрипция завершена!', 'success');
+                
+            } catch (error) {
+                console.error('Ошибка транскрипции:', error);
+                showStatus(`Ошибка: ${error.message}`, 'error');
+            } finally {
+                isProcessing = false;
+                transcribeBtn.disabled = false;
+                stopBtn.disabled = true;
+                progress.classList.remove('active');
+                progressBar.style.width = '0%';
+            }
+        }
+
+
+        function showStatus(message, type) {
+            status.textContent = message;
+            status.className = `status ${type}`;
+        }
+    </script>
+</body>
+</html>
+
