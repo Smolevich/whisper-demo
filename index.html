@@ -485,7 +485,9 @@
                             isProcessing = false;
                             transcribeBtn.disabled = false;
                             stopBtn.disabled = true;
-                            progress.classList.remove('active');
+                            if (progress) {
+                                progress.classList.remove('active');
+                            }
                             break;
                             
                         case 'stopped':
@@ -493,7 +495,9 @@
                             isProcessing = false;
                             transcribeBtn.disabled = false;
                             stopBtn.disabled = true;
-                            progress.classList.remove('active');
+                            if (progress) {
+                                progress.classList.remove('active');
+                            }
                             break;
                     }
                 });
@@ -862,7 +866,9 @@
             isProcessing = false;
             transcribeBtn.disabled = false;
             stopBtn.disabled = true;
-            progress.classList.remove('active');
+            if (progress) {
+                progress.classList.remove('active');
+            }
         }
         
         stopBtn.addEventListener('click', () => {
@@ -888,8 +894,12 @@
             }
             transcribeBtn.disabled = false;
             stopBtn.disabled = true;
-            progress.classList.remove('active');
-            progressBar.style.width = '0%';
+            if (progress) {
+                progress.classList.remove('active');
+            }
+            if (progressBar) {
+                progressBar.style.width = '0%';
+            }
             showStatus('Остановлено пользователем', 'info');
         });
         
