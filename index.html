@@ -77,9 +77,6 @@
         }
 
         .controls {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
             margin-bottom: 20px;
         }
 
@@ -259,14 +256,13 @@
             border: none;
             cursor: pointer;
             font-size: 20px;
-            padding: 8px;
+            padding: 8px 12px;
             color: #667eea;
             transition: transform 0.2s, color 0.2s;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            margin-left: 10px;
-            vertical-align: middle;
+            flex-shrink: 0;
         }
 
         .settings-button:hover {
@@ -276,9 +272,8 @@
 
         .settings-dropdown {
             position: absolute;
-            top: 100%;
+            top: calc(100% + 8px);
             right: 0;
-            margin-top: 8px;
             background: white;
             border: 1px solid #e0e0e0;
             border-radius: 8px;
@@ -288,21 +283,26 @@
             max-width: 400px;
             z-index: 1000;
             display: none;
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: opacity 0.2s, transform 0.2s;
+            pointer-events: none;
         }
 
         .settings-dropdown.active {
             display: block;
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
         }
 
         .control-group-wrapper {
             position: relative;
-            display: inline-flex;
-            align-items: flex-start;
             width: 100%;
         }
 
         .control-group-main {
-            flex: 1;
+            width: 100%;
         }
     </style>
 </head>
@@ -323,17 +323,19 @@
             <div class="control-group-wrapper">
                 <div class="control-group control-group-main">
                     <label for="model">Модель</label>
-                    <select id="model">
-                        <option value="Xenova/whisper-tiny">Tiny (быстрая, низкое качество)</option>
-                        <option value="Xenova/whisper-base" selected>Base (базовая, среднее качество)</option>
-                        <option value="Xenova/whisper-small">Small (стандартная, хорошее качество)</option>
-                        <option value="Xenova/whisper-medium">Medium (качественная, отличное качество)</option>
-                    </select>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <select id="model" style="flex: 1;">
+                            <option value="Xenova/whisper-tiny">Tiny (быстрая, низкое качество)</option>
+                            <option value="Xenova/whisper-base" selected>Base (базовая, среднее качество)</option>
+                            <option value="Xenova/whisper-small">Small (стандартная, хорошее качество)</option>
+                            <option value="Xenova/whisper-medium">Medium (качественная, отличное качество)</option>
+                        </select>
+                        <button class="settings-button" type="button" id="advancedSettingsBtn" title="Дополнительные настройки">
+                            ⚙️
+                        </button>
+                    </div>
                     <span class="model-info">⚠️ Base модель имеет ограниченное качество. Для лучших результатов используйте Small или Medium. Для длинных файлов (>10 мин) рекомендуется Tiny или Base.</span>
                 </div>
-                <button class="settings-button" type="button" id="advancedSettingsBtn" title="Дополнительные настройки">
-                    ⚙️
-                </button>
                 <div class="settings-dropdown" id="advancedSettings">
                     <div class="control-group">
                         <label for="modelType">Тип модели</label>
