@@ -252,22 +252,24 @@
         }
 
         .settings-button {
-            background: none;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             border: none;
             cursor: pointer;
-            font-size: 20px;
+            font-size: 18px;
             padding: 8px 12px;
-            color: #667eea;
-            transition: transform 0.2s, color 0.2s;
+            color: white;
+            transition: transform 0.2s, box-shadow 0.2s;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            flex-shrink: 0;
+            flex: 0 0 auto;
+            width: auto;
+            border-radius: 8px;
         }
 
         .settings-button:hover {
-            color: #764ba2;
-            transform: rotate(90deg);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
         }
 
         .settings-dropdown {
@@ -304,12 +306,95 @@
         .control-group-main {
             width: 100%;
         }
+
+        .memory-monitor {
+            background: #f8f9ff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 15px;
+            font-size: 12px;
+            display: none;
+        }
+
+        .memory-monitor.active {
+            display: block;
+        }
+
+        .memory-stats {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .memory-stat {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .memory-stat-label {
+            color: #666;
+            font-weight: 600;
+        }
+
+        .memory-stat-value {
+            color: #667eea;
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .memory-bar {
+            width: 100%;
+            height: 4px;
+            background: #e0e0e0;
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .memory-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s;
+        }
+
+        .tech-info {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #e0e0e0;
+            color: #999;
+            font-size: 11px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🎤 Whisper в браузере</h1>
         <p class="subtitle">Транскрипция аудио прямо в браузере без сервера</p>
+
+        <div class="memory-monitor" id="memoryMonitor">
+            <div class="memory-stats">
+                <div class="memory-stat">
+                    <span class="memory-stat-label">Использовано памяти</span>
+                    <span class="memory-stat-value" id="memoryUsed">-</span>
+                </div>
+                <div class="memory-stat">
+                    <span class="memory-stat-label">Лимит памяти</span>
+                    <span class="memory-stat-value" id="memoryLimit">-</span>
+                </div>
+                <div class="memory-stat">
+                    <span class="memory-stat-label">Загрузка</span>
+                    <span class="memory-stat-value" id="memoryPercent">-</span>
+                </div>
+            </div>
+            <div class="memory-bar">
+                <div class="memory-bar-fill" id="memoryBarFill" style="width: 0%"></div>
+            </div>
+            <div class="tech-info">
+                💡 WebAssembly оптимизация: SIMD включен (ускорение в 2-4×) | Потоков: <span id="numThreadsDisplay">1</span> (экономия памяти)
+            </div>
+        </div>
 
         <div class="upload-area" id="uploadArea">
             <div class="upload-icon">📁</div>
@@ -329,6 +414,7 @@
                             <option value="Xenova/whisper-base" selected>Base (базовая, среднее качество)</option>
                             <option value="Xenova/whisper-small">Small (стандартная, хорошее качество)</option>
                             <option value="Xenova/whisper-medium">Medium (качественная, отличное качество)</option>
+                            <option value="Xenova/whisper-large">Large (максимальное качество, медленная, только короткие файлы)</option>
                         </select>
                         <button class="settings-button" type="button" id="advancedSettingsBtn" title="Дополнительные настройки">
                             ⚙️
@@ -433,7 +519,11 @@
         env.allowLocalModels = false;
         env.allowRemoteModels = true;
         env.useBrowserCache = true;
-        
+
+        // Оптимизация ONNX Runtime для экономии памяти
+        env.backends.onnx.wasm.numThreads = 1; // Ограничиваем количество потоков для экономии памяти
+        env.backends.onnx.wasm.simd = true; // Включаем SIMD для ускорения
+
         // Модели кэшируются в IndexedDB браузера после первой загрузки
         // При повторном использовании модели загружаются из кэша (быстро)
         // Кэш сохраняется между сессиями браузера
@@ -445,6 +535,7 @@
         let moduleLoaded = false;
         let progressInterval = null;
         let transcriptionTimeout = null;
+        let memoryMonitorInterval = null;
         let heartbeatInterval = null;
         let worker = null; // Web Worker для изоляции обработки
         const TRANSCRIPTION_TIMEOUT = 10 * 60 * 1000; // 10 минут таймаут для транскрипции
@@ -535,6 +626,7 @@
             'Xenova/whisper-base',
             'Xenova/whisper-small',
             'Xenova/whisper-medium',
+            'Xenova/whisper-large',
             'Xenova/whisper-tiny.en',
             'Xenova/whisper-base.en',
             'Xenova/whisper-small.en'
@@ -557,6 +649,10 @@
             'Xenova/whisper-medium': {
                 chunk_length_s: 20,
                 stride_length_s: 2
+            },
+            'Xenova/whisper-large': {
+                chunk_length_s: 15,
+                stride_length_s: 1
             },
             'Xenova/whisper-tiny.en': {
                 chunk_length_s: 30,
@@ -598,7 +694,70 @@
         const downloadButtons = document.getElementById('downloadButtons');
         const advancedSettingsBtn = document.getElementById('advancedSettingsBtn');
         const advancedSettings = document.getElementById('advancedSettings');
-        
+        const memoryMonitor = document.getElementById('memoryMonitor');
+        const memoryUsed = document.getElementById('memoryUsed');
+        const memoryLimit = document.getElementById('memoryLimit');
+        const memoryPercent = document.getElementById('memoryPercent');
+        const memoryBarFill = document.getElementById('memoryBarFill');
+        const numThreadsDisplay = document.getElementById('numThreadsDisplay');
+
+        // Функция мониторинга памяти
+        function updateMemoryStats() {
+            // performance.memory доступен только в Chrome/Edge с флагом --enable-precise-memory-info
+            if (performance.memory) {
+                const usedMB = Math.round(performance.memory.usedJSHeapSize / 1024 / 1024);
+                const limitMB = Math.round(performance.memory.jsHeapSizeLimit / 1024 / 1024);
+                const percent = Math.round((performance.memory.usedJSHeapSize / performance.memory.jsHeapSizeLimit) * 100);
+
+                memoryUsed.textContent = `${usedMB} MB`;
+                memoryLimit.textContent = `${limitMB} MB`;
+                memoryPercent.textContent = `${percent}%`;
+                memoryBarFill.style.width = `${percent}%`;
+
+                // Предупреждение при высокой загрузке
+                if (percent > 80) {
+                    memoryPercent.style.color = '#c62828';
+                } else if (percent > 60) {
+                    memoryPercent.style.color = '#f57c00';
+                } else {
+                    memoryPercent.style.color = '#667eea';
+                }
+            } else {
+                // Для Firefox/Safari показываем информацию о недоступности API
+                memoryUsed.textContent = 'N/A';
+                memoryLimit.textContent = 'N/A';
+                memoryPercent.textContent = 'Недоступно';
+            }
+        }
+
+        // Запуск мониторинга памяти
+        function startMemoryMonitoring() {
+            if (memoryMonitor) {
+                memoryMonitor.classList.add('active');
+                updateMemoryStats();
+                if (memoryMonitorInterval) {
+                    clearInterval(memoryMonitorInterval);
+                }
+                memoryMonitorInterval = setInterval(updateMemoryStats, 1000);
+            }
+        }
+
+        // Остановка мониторинга памяти
+        function stopMemoryMonitoring() {
+            if (memoryMonitorInterval) {
+                clearInterval(memoryMonitorInterval);
+                memoryMonitorInterval = null;
+            }
+            if (memoryMonitor) {
+                memoryMonitor.classList.remove('active');
+            }
+        }
+
+        // Отображение количества потоков
+        if (numThreadsDisplay) {
+            numThreadsDisplay.textContent = env.backends.onnx.wasm.numThreads || 1;
+        }
+
         // Выпадающее меню для дополнительных настроек
         if (advancedSettingsBtn && advancedSettings) {
             advancedSettingsBtn.addEventListener('click', (e) => {
@@ -892,6 +1051,9 @@
                 clearTimeout(transcriptionTimeout);
                 transcriptionTimeout = null;
             }
+            // Остановка мониторинга памяти
+            stopMemoryMonitoring();
+
             transcribeBtn.disabled = false;
             stopBtn.disabled = true;
             if (progress) {
@@ -1056,7 +1218,10 @@
             result.classList.remove('active');
             progress.classList.add('active');
             progressBar.style.width = '10%';
-            
+
+            // Запуск мониторинга памяти
+            startMemoryMonitoring();
+
             let lastProgressUpdate = Date.now();
             
             // Heartbeat для отслеживания зависаний
@@ -1361,6 +1526,9 @@
                     clearTimeout(transcriptionTimeout);
                     transcriptionTimeout = null;
                 }
+                // Остановка мониторинга памяти
+                stopMemoryMonitoring();
+
                 isProcessing = false;
                 transcribeBtn.disabled = false;
                 stopBtn.disabled = true;
