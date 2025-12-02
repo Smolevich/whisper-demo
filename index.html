@@ -275,10 +275,10 @@
             <div class="control-group">
                 <label for="model">Модель</label>
                 <select id="model">
-                    <option value="openai/whisper-tiny">Tiny (быстрая)</option>
-                    <option value="openai/whisper-base" selected>Base (базовая)</option>
-                    <option value="openai/whisper-small">Small (стандартная)</option>
-                    <option value="openai/whisper-medium">Medium (качественная)</option>
+                    <option value="Xenova/whisper-tiny">Tiny (быстрая)</option>
+                    <option value="Xenova/whisper-base" selected>Base (базовая)</option>
+                    <option value="Xenova/whisper-small">Small (стандартная)</option>
+                    <option value="Xenova/whisper-medium">Medium (качественная)</option>
                 </select>
                 <span class="model-info">Больше модель = лучше качество, но медленнее</span>
             </div>
@@ -400,9 +400,16 @@
                 progressBar.style.width = '20%';
 
                 // Инициализация транскрибера
-                if (!transcriber || transcriber.model !== modelName) {
-                    transcriber = await pipeline('automatic-speech-recognition', modelName);
-                }
+                // Пересоздаём pipeline при смене модели
+                transcriber = await pipeline('automatic-speech-recognition', modelName, {
+                    progress_callback: (progress) => {
+                        if (progress.status === 'progress') {
+                            const percent = Math.round(progress.progress * 100);
+                            progressBar.style.width = `${20 + percent * 0.2}%`;
+                            showStatus(`Загрузка модели: ${percent}%`, 'info');
+                        }
+                    }
+                });
 
                 progressBar.style.width = '40%';
                 showStatus('Обработка аудио...', 'info');
@@ -416,6 +423,7 @@
                 // Транскрипция - Transformers.js принимает URL напрямую
                 const output = await transcriber(audioUrl, {
                     chunk_length_s: 30,
+                    stride_length_s: 5,
                     return_timestamps: true,
                     language: language,
                 });
