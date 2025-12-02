@@ -280,12 +280,12 @@
             <div class="control-group">
                 <label for="model">Модель</label>
                 <select id="model">
-                    <option value="Xenova/whisper-tiny">Tiny (быстрая)</option>
-                    <option value="Xenova/whisper-base" selected>Base (базовая)</option>
-                    <option value="Xenova/whisper-small">Small (стандартная)</option>
-                    <option value="Xenova/whisper-medium">Medium (качественная)</option>
+                    <option value="Xenova/whisper-tiny">Tiny (быстрая, низкое качество)</option>
+                    <option value="Xenova/whisper-base" selected>Base (базовая, среднее качество)</option>
+                    <option value="Xenova/whisper-small">Small (стандартная, хорошее качество)</option>
+                    <option value="Xenova/whisper-medium">Medium (качественная, отличное качество)</option>
                 </select>
-                <span class="model-info">Больше модель = лучше качество, но медленнее</span>
+                <span class="model-info">⚠️ Base модель имеет ограниченное качество. Для лучших результатов используйте Small или Medium. Для длинных файлов (>10 мин) рекомендуется Tiny или Base.</span>
             </div>
         </div>
 
@@ -501,23 +501,59 @@
         // Обработка ошибок на уровне страницы для предотвращения белого экрана
         window.addEventListener('error', (event) => {
             console.error('Глобальная ошибка:', event.error);
-            if (isProcessing) {
-                showStatus('Произошла ошибка. Попробуйте обновить страницу.', 'error');
-                isProcessing = false;
-                transcribeBtn.disabled = false;
-                stopBtn.disabled = true;
+            event.preventDefault(); // Предотвращаем стандартную обработку ошибки
+            
+            // Восстанавливаем интерфейс
+            try {
+                if (isProcessing) {
+                    showStatus('Произошла ошибка. Попробуйте обновить страницу или использовать модель tiny.', 'error');
+                    isProcessing = false;
+                    if (transcribeBtn) transcribeBtn.disabled = false;
+                    if (stopBtn) stopBtn.disabled = true;
+                    if (progress) {
+                        progress.classList.remove('active');
+                        if (progressBar) progressBar.style.width = '0%';
+                    }
+                }
+            } catch (e) {
+                console.error('Ошибка при восстановлении интерфейса:', e);
             }
+            
+            return false; // Предотвращаем дальнейшую обработку ошибки
         });
         
         window.addEventListener('unhandledrejection', (event) => {
             console.error('Необработанное отклонение промиса:', event.reason);
-            if (isProcessing) {
-                showStatus('Произошла ошибка. Попробуйте обновить страницу.', 'error');
-                isProcessing = false;
-                transcribeBtn.disabled = false;
-                stopBtn.disabled = true;
+            event.preventDefault(); // Предотвращаем вывод в консоль по умолчанию
+            
+            // Восстанавливаем интерфейс
+            try {
+                if (isProcessing) {
+                    showStatus('Произошла ошибка. Попробуйте обновить страницу или использовать модель tiny.', 'error');
+                    isProcessing = false;
+                    if (transcribeBtn) transcribeBtn.disabled = false;
+                    if (stopBtn) stopBtn.disabled = true;
+                    if (progress) {
+                        progress.classList.remove('active');
+                        if (progressBar) progressBar.style.width = '0%';
+                    }
+                }
+            } catch (e) {
+                console.error('Ошибка при восстановлении интерфейса:', e);
             }
         });
+        
+        // Защита от зависания основного потока
+        let lastMainThreadCheck = Date.now();
+        setInterval(() => {
+            const now = Date.now();
+            const timeSinceCheck = now - lastMainThreadCheck;
+            if (timeSinceCheck > 5000 && isProcessing) {
+                console.warn('Возможное зависание основного потока');
+                showStatus('Обработка занимает много времени. Рекомендуется использовать модель tiny для длинных файлов.', 'info');
+            }
+            lastMainThreadCheck = now;
+        }, 1000);
 
         async function transcribe() {
             if (!audioData) {
@@ -568,6 +604,20 @@
 
                 // Валидация модели
                 validateModel(modelName);
+                
+                // Предупреждение о качестве base модели и длинных файлах
+                if (modelName === 'Xenova/whisper-base' && audioData) {
+                    const fileSizeMB = audioData.size / (1024 * 1024);
+                    const estimatedDuration = fileSizeMB * 0.5; // Примерная оценка: ~0.5 мин на МБ
+                    
+                    if (estimatedDuration > 10) {
+                        showStatus('⚠️ Длинный файл. Base модель может дать низкое качество. Рекомендуется использовать Tiny для скорости или Small/Medium для качества.', 'info');
+                        await new Promise(resolve => setTimeout(resolve, 3000)); // Показываем предупреждение 3 секунды
+                    } else {
+                        showStatus('⚠️ Base модель имеет ограниченное качество. Для лучших результатов используйте Small или Medium.', 'info');
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                    }
+                }
 
                 // Создаём pipeline только при смене модели
                 if (!transcriber || currentModel !== modelName) {
@@ -673,10 +723,24 @@
                 
                 // Отображение результата
                 const text = output.text || (output.chunks ? output.chunks.map(c => c.text).join(' ') : 'Текст не найден');
+                
+                // Проверка качества результата
+                if (text && text.length > 0) {
+                    const wordCount = text.split(/\s+/).length;
+                    const charCount = text.length;
+                    
+                    // Если результат очень короткий для длинного файла - возможно плохое качество
+                    if (modelName === 'Xenova/whisper-base' && charCount < 100 && audioData.size > 5 * 1024 * 1024) {
+                        showStatus('Транскрипция завершена, но качество может быть низким. Рекомендуется использовать Small или Medium модель для лучших результатов.', 'info');
+                    } else {
+                        showStatus(`Транскрипция завершена! Обработано ${wordCount} слов.`, 'success');
+                    }
+                } else {
+                    showStatus('Транскрипция завершена, но текст не найден. Попробуйте другую модель или проверьте аудио файл.', 'error');
+                }
+                
                 resultText.textContent = text;
                 result.classList.add('active');
-                
-                showStatus('Транскрипция завершена!', 'success');
                 
             } catch (error) {
                 console.error('Ошибка транскрипции:', error);
