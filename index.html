@@ -1057,7 +1057,8 @@
                     const elapsed = Math.floor((Date.now() - (lastProgressUpdate - 30000)) / 1000);
                     const minutes = Math.floor(elapsed / 60);
                     const seconds = elapsed % 60;
-                    showStatus(`Транскрипция... (обработка аудио, прошло: ${minutes}м ${seconds}с, прогресс: ${Math.round(simulatedProgress)}%)`, 'info');
+                    const taskName = task === 'translate' ? 'Перевод' : 'Транскрипция';
+                    showStatus(`${taskName}... (обработка аудио, прошло: ${minutes}м ${seconds}с, прогресс: ${Math.round(simulatedProgress)}%)`, 'info');
                     lastProgressUpdate = Date.now(); // Обновляем время последнего обновления
                 }, 200);
 
