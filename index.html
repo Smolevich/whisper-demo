@@ -270,11 +270,10 @@
 
         <div class="controls">
             <div class="control-group">
-                <label for="language">Язык</label>
-                <select id="language">
-                    <option value="ru">Русский</option>
-                    <option value="en">English</option>
-                    <option value="auto">Автоопределение</option>
+                <label for="modelType">Тип модели</label>
+                <select id="modelType">
+                    <option value="multilingual" selected>Multilingual (многоязычная)</option>
+                    <option value="english">English-only (только английский)</option>
                 </select>
             </div>
             <div class="control-group">
@@ -286,6 +285,39 @@
                     <option value="Xenova/whisper-medium">Medium (качественная, отличное качество)</option>
                 </select>
                 <span class="model-info">⚠️ Base модель имеет ограниченное качество. Для лучших результатов используйте Small или Medium. Для длинных файлов (>10 мин) рекомендуется Tiny или Base.</span>
+            </div>
+            <div class="control-group">
+                <label for="task">Задача</label>
+                <select id="task">
+                    <option value="transcribe" selected>Transcribe (транскрипция)</option>
+                    <option value="translate">Translate (перевод на английский)</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label for="language">Source Language (язык источника)</label>
+                <select id="language">
+                    <option value="auto">Auto-detect (автоопределение)</option>
+                    <option value="ru">Русский</option>
+                    <option value="en">English</option>
+                    <option value="de">Deutsch</option>
+                    <option value="fr">Français</option>
+                    <option value="es">Español</option>
+                    <option value="it">Italiano</option>
+                    <option value="pt">Português</option>
+                    <option value="ja">日本語</option>
+                    <option value="ko">한국어</option>
+                    <option value="zh">中文</option>
+                    <option value="ar">العربية</option>
+                    <option value="hi">हिन्दी</option>
+                    <option value="tr">Türkçe</option>
+                    <option value="pl">Polski</option>
+                    <option value="nl">Nederlands</option>
+                    <option value="uk">Українська</option>
+                    <option value="cs">Čeština</option>
+                    <option value="sv">Svenska</option>
+                    <option value="no">Norsk</option>
+                    <option value="fi">Suomi</option>
+                </select>
             </div>
             
             <div class="control-group">
@@ -433,15 +465,18 @@
             }
         }
 
-        // Белый список доверенных моделей
+        // Белый список доверенных моделей (multilingual и english-only)
         const trustedModels = [
             'Xenova/whisper-tiny',
             'Xenova/whisper-base',
             'Xenova/whisper-small',
-            'Xenova/whisper-medium'
+            'Xenova/whisper-medium',
+            'Xenova/whisper-tiny.en',
+            'Xenova/whisper-base.en',
+            'Xenova/whisper-small.en'
         ];
 
-        // Конфигурация параметров для разных моделей
+        // Конфигурация параметров для разных моделей (multilingual и english-only)
         const modelConfigs = {
             'Xenova/whisper-tiny': {
                 chunk_length_s: 30,
@@ -458,6 +493,18 @@
             'Xenova/whisper-medium': {
                 chunk_length_s: 20,
                 stride_length_s: 2
+            },
+            'Xenova/whisper-tiny.en': {
+                chunk_length_s: 30,
+                stride_length_s: 5
+            },
+            'Xenova/whisper-base.en': {
+                chunk_length_s: 30,
+                stride_length_s: 5
+            },
+            'Xenova/whisper-small.en': {
+                chunk_length_s: 30,
+                stride_length_s: 3
             }
         };
 
@@ -1012,12 +1059,12 @@
                 const transcriptionOptions = {
                     ...config,
                     return_timestamps: true,
+                    task: task, // 'transcribe' или 'translate'
                 };
                 
-                // Добавляем язык только если выбран (не auto) и явно указываем задачу транскрипции
-                if (language) {
+                // Язык добавляем только если не auto и если модель multilingual
+                if (language && !modelName.includes('.en')) {
                     transcriptionOptions.language = language;
-                    transcriptionOptions.task = 'transcribe'; // ВАЖНО: гарантирует транскрипцию на выбранном языке
                 }
                 
                 const transcriptionPromise = transcriber(audioUrl, transcriptionOptions);
