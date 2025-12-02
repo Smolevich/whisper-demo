@@ -643,12 +643,12 @@
                 stride_length_s: 3
             },
             'Xenova/whisper-medium': {
-                chunk_length_s: 20,
-                stride_length_s: 2
+                chunk_length_s: 15,  // Уменьшено с 20 до 15 для экономии памяти
+                stride_length_s: 1   // Уменьшено с 2 до 1 для экономии памяти
             },
             'Xenova/whisper-large': {
-                chunk_length_s: 15,
-                stride_length_s: 1
+                chunk_length_s: 10,  // Уменьшено с 15 до 10
+                stride_length_s: 0   // Минимальное перекрытие
             },
             'Xenova/whisper-tiny.en': {
                 chunk_length_s: 30,
@@ -1272,19 +1272,28 @@
                     }
                 }
 
-                // Ограничение для модели Medium на очень длинных файлах, чтобы избежать ошибок OrtRun/memory
-                if (modelName === 'Xenova/whisper-medium' && estimatedDuration !== null && estimatedDuration > 15) {
-                    showStatus('Браузеру не хватает ресурсов для обработки такого длинного файла с моделью Medium. Попробуйте:\n- выбрать модель Small или Base\n- либо разделить файл на несколько частей.', 'error');
-                    isProcessing = false;
-                    transcribeBtn.disabled = false;
-                    stopBtn.disabled = true;
-                    if (progress) {
-                        progress.classList.remove('active');
+                // Умные ограничения для модели Medium в зависимости от длительности
+                if (modelName === 'Xenova/whisper-medium' && estimatedDuration !== null) {
+                    if (estimatedDuration > 30) {
+                        // Файлы >30 минут - блокируем
+                        showStatus('⚠️ Файл слишком длинный для Medium модели в браузере.\n\n' +
+                            'Ваш файл: ' + Math.round(estimatedDuration) + ' мин (лимит: 30 мин)\n\n' +
+                            'Попробуйте:\n' +
+                            '- Модель Small (работает до 60 мин)\n' +
+                            '- Модель Base (работает на любых файлах)\n' +
+                            '- Разделить файл на части по 20-30 минут', 'error');
+                        isProcessing = false;
+                        transcribeBtn.disabled = false;
+                        stopBtn.disabled = true;
+                        if (progress) progress.classList.remove('active');
+                        if (progressBar) progressBar.style.width = '0%';
+                        return;
+                    } else if (estimatedDuration > 15) {
+                        // Файлы 15-30 минут - предупреждение, но разрешаем
+                        showStatus('⚠️ Длинный файл (' + Math.round(estimatedDuration) + ' мин). ' +
+                            'Medium модель может быть медленной. Используются оптимизированные параметры для экономии памяти.', 'info');
+                        await new Promise(resolve => setTimeout(resolve, 3000));
                     }
-                    if (progressBar) {
-                        progressBar.style.width = '0%';
-                    }
-                    return;
                 }
 
                 // Создаём pipeline только при смене модели
@@ -1293,7 +1302,10 @@
                     progressBar.style.width = '20%';
 
                     try {
-                        transcriber = await pipeline('automatic-speech-recognition', modelName, {
+                        // Используем quantization для экономии памяти на больших моделях
+                        const useQuantized = modelName.includes('medium') || modelName.includes('large');
+
+                        const pipelineOptions = {
                             progress_callback: (progress) => {
                                 if (progress.status === 'progress') {
                                     // progress.progress может быть от 0 до 1 или уже в процентах
@@ -1303,14 +1315,23 @@
                                     }
                                     // Ограничиваем от 0 до 100
                                     percent = Math.max(0, Math.min(100, Math.round(percent)));
-                                    
+
                                     // Прогресс-бар: 20% (начало) + до 20% (загрузка модели) = максимум 40%
                                     const barPercent = 20 + (percent * 0.2);
                                     progressBar.style.width = `${barPercent}%`;
-                                    showStatus(`Загрузка модели: ${percent}%`, 'info');
+                                    const quantInfo = useQuantized ? ' (quantized)' : '';
+                                    showStatus(`Загрузка модели${quantInfo}: ${percent}%`, 'info');
                                 }
                             }
-                        });
+                        };
+
+                        // Добавляем quantization для больших моделей (если поддерживается)
+                        if (useQuantized) {
+                            pipelineOptions.quantized = true;
+                            console.log(`Используется quantized версия для экономии памяти`);
+                        }
+
+                        transcriber = await pipeline('automatic-speech-recognition', modelName, pipelineOptions);
                         currentModel = modelName;
                     } catch (modelError) {
                         console.error('Ошибка загрузки модели:', modelError);
@@ -1331,7 +1352,22 @@
                 showStatus(`${taskName}...`, 'info');
 
                 // Получаем конфигурацию для текущей модели
-                const config = modelConfigs[modelName] || modelConfigs['Xenova/whisper-base'] || modelConfigs['Xenova/whisper-base.en'];
+                let config = {...(modelConfigs[modelName] || modelConfigs['Xenova/whisper-base'] || modelConfigs['Xenova/whisper-base.en'])};
+
+                // Адаптивная оптимизация параметров для длинных файлов
+                if (estimatedDuration !== null) {
+                    if (modelName === 'Xenova/whisper-medium' && estimatedDuration > 15) {
+                        // Для Medium на длинных файлах (15-30 мин) - агрессивная экономия памяти
+                        config.chunk_length_s = Math.max(8, Math.floor(15 - (estimatedDuration - 15) / 5));
+                        config.stride_length_s = 0;
+                        console.log(`Адаптивная оптимизация Medium: chunk=${config.chunk_length_s}s для ${Math.round(estimatedDuration)}мин файла`);
+                    } else if (modelName === 'Xenova/whisper-large' && estimatedDuration > 5) {
+                        // Для Large на файлах >5 минут
+                        config.chunk_length_s = Math.max(6, Math.floor(10 - (estimatedDuration - 5) / 3));
+                        config.stride_length_s = 0;
+                        console.log(`Адаптивная оптимизация Large: chunk=${config.chunk_length_s}s для ${Math.round(estimatedDuration)}мин файла`);
+                    }
+                }
 
                 // Симуляция прогресса во время транскрипции
                 // callback_function может не поддерживаться для ASR pipeline в Transformers.js

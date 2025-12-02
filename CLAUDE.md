@@ -139,18 +139,25 @@ When creating commits for this repository:
 - ❌ Any AI-generated signatures or attributions
 
 **Commit Message Format**:
-- Use clear, descriptive messages in Russian
-- First line: Brief summary (imperative mood)
+- Use clear, descriptive messages in **English**
+- First line: Brief summary (imperative mood, present tense)
 - Optional: Detailed bullet points after blank line
 - Focus on WHAT changed and WHY, not HOW
 
 **Examples**:
 ```
-Добавлена поддержка Large модели
+Add support for Large model
 
-- Модель Whisper Large в списке выбора
-- Оптимальная конфигурация для браузера
-- Мониторинг памяти во время транскрипции
+- Add Whisper Large model to model selection
+- Configure optimal parameters for browser
+- Add memory monitoring during transcription
+```
+
+```
+Fix memory error in transcription
+
+- Remove problematic ONNX Runtime settings
+- Keep memory monitoring without WebAssembly config changes
 ```
 
 ## GitHub Pages Deployment
